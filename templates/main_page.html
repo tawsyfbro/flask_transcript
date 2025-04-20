@@ -1,0 +1,362 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>YouTube Transcript Scraper & Analyzer</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.0/font/bootstrap-icons.css">
+    <style>
+        body {
+            padding-top: 2rem;
+            padding-bottom: 2rem;
+        }
+        .transcript-container, .analysis-container {
+            max-height: 500px;
+            overflow-y: auto;
+            padding: 1rem;
+            border: 1px solid #dee2e6;
+            border-radius: 0.25rem;
+            margin-top: 1rem;
+            white-space: pre-wrap;
+        }
+        .loading {
+            display: none;
+            text-align: center;
+            margin-top: 1rem;
+        }
+        .segment {
+            margin-bottom: 0.5rem;
+            padding: 0.5rem;
+            border-radius: 0.25rem;
+            background-color: #f8f9fa;
+        }
+        .segment:hover {
+            background-color: #e9ecef;
+        }
+        .timestamp {
+            color: #6c757d;
+            font-size: 0.875rem;
+        }
+        .tab-content {
+            margin-top: 1rem;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1 class="text-center mb-4">YouTube Transcript Scraper & Analyzer</h1>
+        
+        <div class="row justify-content-center">
+            <div class="col-md-10">
+                <div class="card">
+                    <div class="card-body">
+                        <form id="transcriptForm">
+                            <div class="mb-3">
+                                <label for="youtubeUrl" class="form-label">YouTube Video URL</label>
+                                <input type="text" class="form-control" id="youtubeUrl" 
+                                       placeholder="https://www.youtube.com/watch?v=..." required>
+                            </div>
+                            <div class="mb-3 form-check">
+                                <input type="checkbox" class="form-check-input" id="analyzeTranscript" checked>
+                                <label class="form-check-label" for="analyzeTranscript">Analyze transcript with AI</label>
+                            </div>
+                            <div class="d-grid">
+                                <button type="submit" class="btn btn-primary">Get Transcript</button>
+                            </div>
+                        </form>
+                        
+                        <div id="loading" class="loading">
+                            <div class="spinner-border text-primary" role="status">
+                                <span class="visually-hidden">Loading...</span>
+                            </div>
+                            <p id="loadingText">Fetching transcript...</p>
+                        </div>
+                        
+                        <div id="error" class="alert alert-danger mt-3" style="display: none;"></div>
+                        
+                        <div id="results" style="display: none;">
+                            <ul class="nav nav-tabs" id="resultTabs" role="tablist">
+                                <li class="nav-item" role="presentation">
+                                    <button class="nav-link active" id="transcript-tab" data-bs-toggle="tab" 
+                                            data-bs-target="#transcript-content" type="button" role="tab" 
+                                            aria-controls="transcript-content" aria-selected="true">Transcript</button>
+                                </li>
+                                <li class="nav-item" role="presentation">
+                                    <button class="nav-link" id="analysis-tab" data-bs-toggle="tab" 
+                                            data-bs-target="#analysis-content" type="button" role="tab" 
+                                            aria-controls="analysis-content" aria-selected="false">AI Analysis</button>
+                                </li>
+                            </ul>
+                            
+                            <div class="tab-content" id="resultTabsContent">
+                                <!-- Transcript Tab -->
+                                <div class="tab-pane fade show active" id="transcript-content" role="tabpanel" 
+                                     aria-labelledby="transcript-tab">
+                                    <div class="mb-3">
+                                        <div class="btn-group" role="group">
+                                            <button id="viewFull" class="btn btn-outline-primary active">Full Text</button>
+                                            <button id="viewSegments" class="btn btn-outline-primary">With Timestamps</button>
+                                        </div>
+                                        <button id="copyTranscript" class="btn btn-outline-secondary ms-2">
+                                            <i class="bi bi-clipboard"></i> Copy
+                                        </button>
+                                        <button id="downloadTranscript" class="btn btn-outline-secondary ms-2">
+                                            <i class="bi bi-download"></i> Download
+                                        </button>
+                                    </div>
+                                    
+                                    <div id="fullTranscript" class="transcript-container"></div>
+                                    <div id="segmentedTranscript" class="transcript-container" style="display: none;"></div>
+                                </div>
+                                
+                                <!-- Analysis Tab -->
+                                <div class="tab-pane fade" id="analysis-content" role="tabpanel" 
+                                     aria-labelledby="analysis-tab">
+                                    <div class="mb-3">
+                                        <button id="copyAnalysis" class="btn btn-outline-secondary">
+                                            <i class="bi bi-clipboard"></i> Copy
+                                        </button>
+                                        <button id="downloadAnalysis" class="btn btn-outline-secondary ms-2">
+                                            <i class="bi bi-download"></i> Download
+                                        </button>
+                                    </div>
+                                    
+                                    <div id="analysisContent" class="analysis-container">
+                                        <div id="analysisLoading" style="display: none;">
+                                            <div class="d-flex justify-content-center">
+                                                <div class="spinner-border text-primary" role="status">
+                                                    <span class="visually-hidden">Loading...</span>
+                                                </div>
+                                            </div>
+                                            <p class="text-center mt-2">Analyzing transcript with AI...</p>
+                                        </div>
+                                        <div id="analysisError" class="alert alert-danger" style="display: none;"></div>
+                                        <div id="analysisResult"></div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            const form = document.getElementById('transcriptForm');
+            const loading = document.getElementById('loading');
+            const loadingText = document.getElementById('loadingText');
+            const error = document.getElementById('error');
+            const results = document.getElementById('results');
+            const fullTranscript = document.getElementById('fullTranscript');
+            const segmentedTranscript = document.getElementById('segmentedTranscript');
+            const viewFull = document.getElementById('viewFull');
+            const viewSegments = document.getElementById('viewSegments');
+            const copyBtn = document.getElementById('copyTranscript');
+            const downloadBtn = document.getElementById('downloadTranscript');
+            const analysisTab = document.getElementById('analysis-tab');
+            const analysisLoading = document.getElementById('analysisLoading');
+            const analysisError = document.getElementById('analysisError');
+            const analysisResult = document.getElementById('analysisResult');
+            const copyAnalysisBtn = document.getElementById('copyAnalysis');
+            const downloadAnalysisBtn = document.getElementById('downloadAnalysis');
+            
+            let transcriptData = null;
+            
+            form.addEventListener('submit', async function(e) {
+                e.preventDefault();
+                
+                const youtubeUrl = document.getElementById('youtubeUrl').value.trim();
+                const analyzeTranscript = document.getElementById('analyzeTranscript').checked;
+                
+                if (!youtubeUrl) return;
+                
+                // Reset UI
+                error.style.display = 'none';
+                results.style.display = 'none';
+                loading.style.display = 'block';
+                loadingText.textContent = 'Fetching transcript...';
+                
+                try {
+                    const response = await fetch('/get_transcript', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                        },
+                        body: JSON.stringify({ 
+                            youtube_url: youtubeUrl,
+                            analyze: analyzeTranscript
+                        }),
+                    });
+                    
+                    const data = await response.json();
+                    
+                    if (!response.ok) {
+                        throw new Error(data.error || 'Failed to get transcript');
+                    }
+                    
+                    transcriptData = data;
+                    
+                    // Display full transcript
+                    fullTranscript.textContent = data.transcript;
+                    
+                    // Display segmented transcript
+                    segmentedTranscript.innerHTML = '';
+                    data.transcript_segments.forEach(segment => {
+                        const div = document.createElement('div');
+                        div.className = 'segment';
+                        
+                        const timestamp = document.createElement('div');
+                        timestamp.className = 'timestamp';
+                        const startTime = formatTime(segment.start);
+                        timestamp.textContent = startTime;
+                        
+                        const text = document.createElement('div');
+                        text.textContent = segment.text;
+                        
+                        div.appendChild(timestamp);
+                        div.appendChild(text);
+                        segmentedTranscript.appendChild(div);
+                    });
+                    
+                    // Handle analysis
+                    if (analyzeTranscript) {
+                        if (data.analysis) {
+                            analysisResult.innerHTML = formatMarkdown(data.analysis);
+                            analysisError.style.display = 'none';
+                            analysisLoading.style.display = 'none';
+                        } else if (data.analysis_error) {
+                            analysisError.textContent = data.analysis_error;
+                            analysisError.style.display = 'block';
+                            analysisLoading.style.display = 'none';
+                        }
+                    } else {
+                        // Hide analysis tab if not requested
+                        analysisTab.style.display = 'none';
+                    }
+                    
+                    // Show results
+                    loading.style.display = 'none';
+                    results.style.display = 'block';
+                    
+                } catch (err) {
+                    loading.style.display = 'none';
+                    error.textContent = err.message;
+                    error.style.display = 'block';
+                }
+            });
+            
+            // Toggle between full and segmented views
+            viewFull.addEventListener('click', function() {
+                viewFull.classList.add('active');
+                viewSegments.classList.remove('active');
+                fullTranscript.style.display = 'block';
+                segmentedTranscript.style.display = 'none';
+            });
+            
+            viewSegments.addEventListener('click', function() {
+                viewSegments.classList.add('active');
+                viewFull.classList.remove('active');
+                segmentedTranscript.style.display = 'block';
+                fullTranscript.style.display = 'none';
+            });
+            
+            // Copy transcript
+            copyBtn.addEventListener('click', function() {
+                if (!transcriptData) return;
+                
+                const textToCopy = transcriptData.transcript;
+                copyToClipboard(textToCopy, copyBtn);
+            });
+            
+            // Download transcript
+            downloadBtn.addEventListener('click', function() {
+                if (!transcriptData) return;
+                
+                const text = transcriptData.transcript;
+                downloadText(text, `transcript_${transcriptData.video_id}.txt`);
+            });
+            
+            // Copy analysis
+            copyAnalysisBtn.addEventListener('click', function() {
+                if (!transcriptData || !transcriptData.analysis) return;
+                
+                const textToCopy = transcriptData.analysis;
+                copyToClipboard(textToCopy, copyAnalysisBtn);
+            });
+            
+            // Download analysis
+            downloadAnalysisBtn.addEventListener('click', function() {
+                if (!transcriptData || !transcriptData.analysis) return;
+                
+                const text = transcriptData.analysis;
+                downloadText(text, `analysis_${transcriptData.video_id}.txt`);
+            });
+            
+            // Helper function to format time
+            function formatTime(seconds) {
+                const minutes = Math.floor(seconds / 60);
+                const secs = Math.floor(seconds % 60);
+                return `${minutes}:${secs.toString().padStart(2, '0')}`;
+            }
+            
+            // Helper function to copy text to clipboard
+            function copyToClipboard(text, button) {
+                navigator.clipboard.writeText(text).then(
+                    function() {
+                        // Temporarily change button text to indicate success
+                        const originalText = button.innerHTML;
+                        button.innerHTML = '<i class="bi bi-check"></i> Copied!';
+                        setTimeout(() => {
+                            button.innerHTML = originalText;
+                        }, 2000);
+                    }
+                );
+            }
+            
+            // Helper function to download text
+            function downloadText(text, filename) {
+                const blob = new Blob([text], { type: 'text/plain' });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = filename;
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+                URL.revokeObjectURL(url);
+            }
+            
+            // Helper function to format markdown
+            function formatMarkdown(text) {
+                // Simple markdown formatting
+                // Convert headers
+                text = text.replace(/^# (.*$)/gm, '<h1>$1</h1>');
+                text = text.replace(/^## (.*$)/gm, '<h2>$1</h2>');
+                text = text.replace(/^### (.*$)/gm, '<h3>$1</h3>');
+                
+                // Convert bold
+                text = text.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
+                
+                // Convert italic
+                text = text.replace(/\*(.*?)\*/g, '<em>$1</em>');
+                
+                // Convert lists
+                text = text.replace(/^\- (.*$)/gm, '<li>$1</li>');
+                text = text.replace(/(<li>.*<\/li>)/gm, '<ul>$1</ul>');
+                
+                // Convert paragraphs
+                text = text.replace(/^(?!<[uo]l|<li|<h[1-6])(.*$)/gm, '<p>$1</p>');
+                
+                // Fix nested lists
+                text = text.replace(/<\/ul>\s*<ul>/g, '');
+                
+                return text;
+            }
+        });
+    </script>
+</body>
+</html>
